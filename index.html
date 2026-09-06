@@ -113,77 +113,28 @@
         .page-copy h3 + p { margin-top: 0; }
         .page-copy ol { padding-left: 1.3em; }
         .page-copy li { margin-bottom: 0.4em; }
-        /* --- High score entry + leaderboard --- */
-        .visually-hidden {
-            position: absolute; width: 1px; height: 1px; overflow: hidden;
-            clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
-        }
-        .score-entry {
-            margin-top: 14px;
-            padding: 12px;
-            border: 2px solid #0f0;
-            background: #1a1a1a;
-            text-align: center;
-        }
-        .score-entry-title {
-            color: #0f0;
-            font-weight: bold;
-            letter-spacing: 1px;
-            margin-bottom: 10px;
-        }
-        #scoreForm { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-        #playerName {
-            font-family: inherit;
-            font-size: 1em;
-            text-transform: uppercase;
-            padding: 8px;
-            width: 150px;
-            background: #000;
-            color: #0f0;
-            border: 2px solid #555;
-            text-align: center;
-        }
-        #playerName:focus { outline: none; border-color: #0f0; }
-        .score-entry button {
-            font-family: inherit;
-            font-size: 0.95em;
-            padding: 8px 14px;
-            cursor: pointer;
-            border: 2px solid;
-        }
-        .btn-primary { background: #0f0; color: #000; border-color: #0f0; font-weight: bold; }
-        .btn-ghost { background: transparent; color: #aaa; border-color: #555; }
-        .leaderboard {
+        /* --- Persistent high score bar --- */
+        .hi-score {
             width: 100%;
             max-width: 400px;
-            margin: 26px auto 0;
-            padding: 0 4px;
-        }
-        .leaderboard h2 {
-            font-size: 1.1em;
-            text-align: center;
+            margin: 0 auto 10px;
+            padding: 6px 10px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 2px solid #0f0;
+            background: #1a1a1a;
             letter-spacing: 2px;
-            margin-bottom: 10px;
+            font-size: 0.95em;
         }
-        .leaderboard table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
-        .leaderboard td { padding: 6px 8px; border-bottom: 1px solid #444; }
-        .leaderboard td.rank { width: 2.5em; color: #888; }
-        .leaderboard td.name { word-break: break-word; }
-        .leaderboard td.score { text-align: right; color: #0f0; font-weight: bold; }
-        .leaderboard tr.is-new td { color: #ff0; }
-        .leaderboard tr.is-new td.score { color: #ff0; }
-        .board-empty { text-align: center; color: #888; }
-        .board-actions { text-align: center; margin-top: 10px; }
-        #clearBoard {
-            font-family: inherit;
-            font-size: 0.8em;
-            background: transparent;
-            color: #777;
-            border: 1px solid #444;
-            padding: 5px 10px;
-            cursor: pointer;
+        .hi-score .label { color: #0f0; font-weight: bold; }
+        .hi-score .value { color: #fff; font-weight: bold; }
+        .hi-score.is-new { animation: hiFlash 0.6s steps(2) 4; }
+        @keyframes hiFlash { 0%, 100% { border-color: #0f0; } 50% { border-color: #ff0; } }
+        @media (prefers-reduced-motion: reduce) {
+            .hi-score.is-new { animation: none; }
         }
-        #clearBoard:hover { color: #f66; border-color: #f66; }
         span.fuel { color: #0f0; font-weight: bold; }
         span.enemy { color: #00f; font-weight: bold; }
 
@@ -233,6 +184,11 @@
     <h1>ROAD FIGHTER RETRO</h1>
 
     <div class="game-wrap">
+        <div class="hi-score" id="hiScoreBar">
+            <span class="label">HI-SCORE</span>
+            <span class="value" id="hiScoreValue">0</span>
+        </div>
+
         <canvas id="gameCanvas" width="400" height="600"></canvas>
 
         <div class="touch-controls">
@@ -242,32 +198,11 @@
         </div>
     </div>
 
-    <div class="score-entry" id="scoreEntry" hidden>
-        <p class="score-entry-title">NEW HIGH SCORE: <span id="entryScore">0</span></p>
-        <form id="scoreForm" autocomplete="off">
-            <label class="visually-hidden" for="playerName">Enter your name for the leaderboard</label>
-            <input id="playerName" type="text" maxlength="12" placeholder="YOUR NAME" required>
-            <button type="submit" class="btn-primary">SAVE</button>
-            <button type="button" class="btn-ghost" id="skipEntry">SKIP</button>
-        </form>
-    </div>
-
     <div class="instructions">
         <p><strong>Controls:</strong> Up Arrow to Accelerate. Left/Right Arrows to steer.<br>
            On a touchscreen, use the buttons above.</p>
         <p>Dodge the <span class="enemy">Blue Cars</span>. Collect <span class="fuel">Green Cars</span> for fuel. Don't hit the sides!</p>
     </div>
-
-    <section class="leaderboard">
-        <h2>Top Scores</h2>
-        <table>
-            <tbody id="boardBody"></tbody>
-        </table>
-        <p class="board-empty" id="boardEmpty">No scores yet &mdash; be the first!</p>
-        <div class="board-actions">
-            <button type="button" id="clearBoard" hidden>Clear scores</button>
-        </div>
-    </section>
 
     <article class="page-copy">
         <h2>Play Road Fighter online, free and instantly</h2>
@@ -416,16 +351,12 @@
 
     function startIfIdle() {
         if (gameState === 'PLAYING') return;
-        if (isEnteringScore()) return; // finish saving the score first
         initAudio(); // Boot up the audio context on first user interaction
         playSound('start'); // Play the new race start sound!
         resetGame();
     }
 
     window.addEventListener('keydown', (e) => {
-        // While the name field has focus, arrows/space belong to the text box,
-        // not to the car.
-        if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
         if(keys.hasOwnProperty(e.code)) keys[e.code] = true;
         // Start/Restart game
         if(e.code === 'ArrowUp' || e.code === 'Space') startIfIdle();
@@ -473,11 +404,13 @@
         gameState = 'GAMEOVER';
         playSound('crash');
         updateEngineSound(); // Mutes the engine
-        offerScoreEntry(score);
+        recordScore(score);
     }
 
     function resetGame() {
         for (const k in keys) keys[k] = false;
+        beatHighScore = false;
+        hiScoreBarEl.classList.remove('is-new');
         player.x = 185;
         player.fuel = 100;
         speed = 0;
@@ -649,135 +582,69 @@
             ctx.fillStyle = 'white';
             ctx.font = '20px Courier New';
             ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 + 20);
+
             ctx.font = '16px Courier New';
-            ctx.fillText(
-                isEnteringScore()
-                    ? 'Enter your name below'
-                    : (isTouch ? 'Tap GO to Restart' : 'Press UP ARROW to Restart'),
-                canvas.width/2, canvas.height/2 + 60);
+            if (beatHighScore) {
+                ctx.fillStyle = '#ff0';
+                ctx.fillText('NEW HIGH SCORE!', canvas.width/2, canvas.height/2 + 50);
+            } else {
+                ctx.fillStyle = '#aaa';
+                ctx.fillText(`Best: ${highScore}`, canvas.width/2, canvas.height/2 + 50);
+            }
+
+            ctx.fillStyle = 'white';
+            ctx.fillText(isTouch ? 'Tap GO to Restart' : 'Press UP ARROW to Restart',
+                canvas.width/2, canvas.height/2 + 85);
             ctx.textAlign = 'left'; 
         }
     }
 
-    // --- LEADERBOARD ---------------------------------------------------
-    // Scores live in localStorage, so the board is per-device. Every read and
-    // write is guarded: Safari private mode and "block site data" settings make
-    // localStorage itself throw on access, which would otherwise kill the game.
-    const BOARD_KEY = 'rf_leaderboard_v1';
-    const BOARD_MAX = 10;
+    // --- HIGH SCORE -----------------------------------------------------
+    // A single best-ever score kept in localStorage, so it survives reloads.
+    // Access is try/catch guarded because Safari private mode and "block site
+    // data" settings make localStorage throw on touch, which would otherwise
+    // take the whole game down.
+    const HS_KEY = 'rf_highscore_v1';
+    const hiScoreBarEl = document.getElementById('hiScoreBar');
+    const hiScoreValueEl = document.getElementById('hiScoreValue');
 
-    const scoreEntryEl = document.getElementById('scoreEntry');
-    const scoreFormEl = document.getElementById('scoreForm');
-    const playerNameEl = document.getElementById('playerName');
-    const entryScoreEl = document.getElementById('entryScore');
-    const boardBodyEl = document.getElementById('boardBody');
-    const boardEmptyEl = document.getElementById('boardEmpty');
-    const clearBoardEl = document.getElementById('clearBoard');
+    let highScore = loadHighScore();
+    let beatHighScore = false; // true for the run that just set a record
 
-    function loadBoard() {
+    function loadHighScore() {
         try {
-            const raw = localStorage.getItem(BOARD_KEY);
-            if (!raw) return [];
-            const parsed = JSON.parse(raw);
-            if (!Array.isArray(parsed)) return [];
-            // Drop anything malformed rather than trusting stored shape.
-            return parsed
-                .filter(e => e && typeof e.name === 'string' && Number.isFinite(e.score))
-                .sort((a, b) => b.score - a.score)
-                .slice(0, BOARD_MAX);
+            const raw = localStorage.getItem(HS_KEY);
+            const value = parseInt(raw, 10);
+            return Number.isFinite(value) && value > 0 ? value : 0;
         } catch (err) {
-            return [];
+            return 0;
         }
     }
 
-    function saveBoard(board) {
+    function saveHighScore(value) {
         try {
-            localStorage.setItem(BOARD_KEY, JSON.stringify(board));
+            localStorage.setItem(HS_KEY, String(value));
         } catch (err) {
-            /* storage unavailable or full — the board just won't persist */
+            /* storage unavailable — the score just won't survive a reload */
         }
     }
 
-    function qualifies(value) {
-        if (value <= 0) return false;
-        const board = loadBoard();
-        if (board.length < BOARD_MAX) return true;
-        return value > board[board.length - 1].score;
+    function renderHighScore() {
+        hiScoreValueEl.textContent = highScore;
     }
 
-    function isEnteringScore() {
-        return !scoreEntryEl.hidden;
+    // Called on every crash: records the run automatically, no prompt.
+    function recordScore(value) {
+        beatHighScore = value > highScore;
+        if (beatHighScore) {
+            highScore = value;
+            saveHighScore(highScore);
+            renderHighScore();
+            hiScoreBarEl.classList.add('is-new');
+        }
     }
 
-    function offerScoreEntry(value) {
-        if (!qualifies(value)) return;
-        entryScoreEl.textContent = value;
-        playerNameEl.value = '';
-        scoreEntryEl.hidden = false;
-        // Desktop gets focus straight away; on touch this would yank the
-        // keyboard up over the game, so let the player tap in themselves.
-        if (!isTouch) playerNameEl.focus();
-    }
-
-    function closeScoreEntry() {
-        scoreEntryEl.hidden = true;
-        if (playerNameEl === document.activeElement) playerNameEl.blur();
-    }
-
-    function addScore(name, value) {
-        const board = loadBoard();
-        const entry = { name: name, score: value, at: Date.now() };
-        board.push(entry);
-        board.sort((a, b) => b.score - a.score);
-        const trimmed = board.slice(0, BOARD_MAX);
-        saveBoard(trimmed);
-        renderBoard(entry);
-    }
-
-    function renderBoard(highlight) {
-        const board = loadBoard();
-        boardBodyEl.innerHTML = '';
-        boardEmptyEl.hidden = board.length > 0;
-        clearBoardEl.hidden = board.length === 0;
-
-        board.forEach((entry, i) => {
-            const tr = document.createElement('tr');
-            if (highlight && entry.at === highlight.at && entry.score === highlight.score) {
-                tr.className = 'is-new';
-            }
-            const rank = document.createElement('td');
-            rank.className = 'rank';
-            rank.textContent = (i + 1) + '.';
-            const name = document.createElement('td');
-            name.className = 'name';
-            // textContent, not innerHTML — the name is player input.
-            name.textContent = entry.name;
-            const sc = document.createElement('td');
-            sc.className = 'score';
-            sc.textContent = entry.score;
-            tr.append(rank, name, sc);
-            boardBodyEl.appendChild(tr);
-        });
-    }
-
-    scoreFormEl.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const name = playerNameEl.value.trim().slice(0, 12) || 'ANON';
-        addScore(name, score);
-        closeScoreEntry();
-    });
-
-    document.getElementById('skipEntry').addEventListener('click', () => {
-        closeScoreEntry();
-    });
-
-    clearBoardEl.addEventListener('click', () => {
-        if (!confirm('Clear all saved scores on this device?')) return;
-        try { localStorage.removeItem(BOARD_KEY); } catch (err) { /* nothing to do */ }
-        renderBoard();
-    });
-
-    renderBoard();
+    renderHighScore();
 
     function gameLoop() {
         update();
