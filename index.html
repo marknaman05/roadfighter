@@ -358,10 +358,19 @@
     let engineGain;
 
     // --- AUDIO SYSTEM ---
+    // Returns a promise that settles once the context is actually running.
+    // resume() is async, and a suspended context's clock sits frozen at
+    // currentTime 0 — so anything scheduled before it resumes is timed against
+    // an instant that has already passed and is silently dropped. That is why
+    // the very first run used to be mute while every later one had sound.
     function initAudio() {
         if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (err) {
+                return Promise.resolve(); // no audio available; the game still plays
+            }
+
             // Continuous Engine Sound
             engineOsc = audioCtx.createOscillator();
             engineGain = audioCtx.createGain();
@@ -374,8 +383,9 @@
             engineOsc.start();
         }
         if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
+            return audioCtx.resume().catch(() => {});
         }
+        return Promise.resolve();
     }
 
     function playSound(type) {
@@ -446,8 +456,9 @@
 
     function startIfIdle() {
         if (gameState === 'PLAYING') return;
-        initAudio(); // Boot up the audio context on first user interaction
-        playSound('start'); // Play the new race start sound!
+        // Boot the audio context on this user gesture, then play the start
+        // sound only once it is running, so the first race is not silent.
+        initAudio().then(() => playSound('start'));
         resetGame();
     }
 
