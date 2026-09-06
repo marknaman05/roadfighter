@@ -113,28 +113,6 @@
         .page-copy h3 + p { margin-top: 0; }
         .page-copy ol { padding-left: 1.3em; }
         .page-copy li { margin-bottom: 0.4em; }
-        /* --- Persistent high score bar --- */
-        .hi-score {
-            width: 100%;
-            max-width: 400px;
-            margin: 0 auto 10px;
-            padding: 6px 10px;
-            box-sizing: border-box;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border: 2px solid #0f0;
-            background: #1a1a1a;
-            letter-spacing: 2px;
-            font-size: 0.95em;
-        }
-        .hi-score .label { color: #0f0; font-weight: bold; }
-        .hi-score .value { color: #fff; font-weight: bold; }
-        .hi-score.is-new { animation: hiFlash 0.6s steps(2) 4; }
-        @keyframes hiFlash { 0%, 100% { border-color: #0f0; } 50% { border-color: #ff0; } }
-        @media (prefers-reduced-motion: reduce) {
-            .hi-score.is-new { animation: none; }
-        }
         span.fuel { color: #0f0; font-weight: bold; }
         span.enemy { color: #00f; font-weight: bold; }
 
@@ -184,11 +162,6 @@
     <h1>ROAD FIGHTER RETRO</h1>
 
     <div class="game-wrap">
-        <div class="hi-score" id="hiScoreBar">
-            <span class="label">HI-SCORE</span>
-            <span class="value" id="hiScoreValue">0</span>
-        </div>
-
         <canvas id="gameCanvas" width="400" height="600"></canvas>
 
         <div class="touch-controls">
@@ -410,7 +383,6 @@
     function resetGame() {
         for (const k in keys) keys[k] = false;
         beatHighScore = false;
-        hiScoreBarEl.classList.remove('is-new');
         player.x = 185;
         player.fuel = 100;
         speed = 0;
@@ -555,7 +527,11 @@
         ctx.fillStyle = 'white';
         ctx.font = '20px Courier New';
         ctx.fillText(`SCORE: ${score}`, 30, 30);
-        
+
+        ctx.fillStyle = '#ff0';
+        ctx.fillText(`HI: ${highScore}`, 30, 56);
+
+        ctx.fillStyle = 'white';
         ctx.fillText(`FUEL:`, 230, 30);
         ctx.fillStyle = player.fuel > 20 ? 'green' : 'red';
         ctx.fillRect(290, 15, player.fuel, 15);
@@ -605,9 +581,6 @@
     // data" settings make localStorage throw on touch, which would otherwise
     // take the whole game down.
     const HS_KEY = 'rf_highscore_v1';
-    const hiScoreBarEl = document.getElementById('hiScoreBar');
-    const hiScoreValueEl = document.getElementById('hiScoreValue');
-
     let highScore = loadHighScore();
     let beatHighScore = false; // true for the run that just set a record
 
@@ -629,22 +602,14 @@
         }
     }
 
-    function renderHighScore() {
-        hiScoreValueEl.textContent = highScore;
-    }
-
     // Called on every crash: records the run automatically, no prompt.
     function recordScore(value) {
         beatHighScore = value > highScore;
         if (beatHighScore) {
             highScore = value;
             saveHighScore(highScore);
-            renderHighScore();
-            hiScoreBarEl.classList.add('is-new');
         }
     }
-
-    renderHighScore();
 
     function gameLoop() {
         update();
