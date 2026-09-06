@@ -113,6 +113,105 @@
         .page-copy h3 + p { margin-top: 0; }
         .page-copy ol { padding-left: 1.3em; }
         .page-copy li { margin-bottom: 0.4em; }
+        /* --- Share panel: overlays the canvas, sitting above the CRASHED! text --- */
+        .canvas-wrap {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+        }
+        .share-panel {
+            position: absolute;
+            /* The canvas is 400x600 and CRASHED! is drawn at y=280 (~47%), so the
+               panel is parked in the clear band between the HUD and that text. */
+            top: 13%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 88%;
+            box-sizing: border-box;
+            padding: 10px 10px 8px;
+            border: 2px solid #ff0;
+            background: rgba(0, 0, 0, 0.88);
+            text-align: center;
+            z-index: 2;
+        }
+        .share-dismiss {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1em;
+            line-height: 1;
+            background: transparent;
+            color: #888;
+            border: 0;
+            padding: 4px 6px;
+            cursor: pointer;
+        }
+        .share-dismiss:hover { color: #fff; }
+        .share-callout {
+            color: #ff0;
+            font-weight: bold;
+            font-size: 1em;          /* matches the 16px canvas prompt text */
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-align: center;
+            line-height: 1.45;
+            /* Symmetric inset keeps the two lines optically centred in the panel
+               while clearing the absolutely-positioned dismiss button. */
+            margin: 0 18px 10px;
+        }
+        .share-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+        .share-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85em;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 8px 10px;
+            cursor: pointer;
+            border: 2px solid #555;
+            background: #000;
+            color: #eee;
+            text-decoration: none;
+        }
+        .share-btn svg { width: 18px; height: 18px; flex: none; }
+        /* Icon-only buttons: square padding so they read as app buttons. */
+        .share-btn.wa, .share-btn.xcom { padding: 7px 10px; }
+        .share-btn:hover { border-color: #eee; }
+        /* Brand colours, so the icons read as the apps they are. */
+        .share-btn.wa { color: #25D366; border-color: #25D366; }
+        .share-btn.wa:hover { background: #25D366; color: #000; }
+        .share-btn.xcom { color: #fff; border-color: #888; }
+        .share-btn.xcom:hover { background: #fff; color: #000; }
+        .share-btn.primary { background: #0f0; color: #000; border-color: #0f0; font-weight: bold; }
+        .share-btn.primary:hover { background: #fff; border-color: #fff; }
+        .share-status {
+            min-height: 1em;
+            margin-top: 8px;
+            color: #0f0;
+            font-size: 0.8em;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        /* On narrow phones the panel would wrap to two rows and spill over the
+           CRASHED! text, so it tightens up and the brand buttons go icon-only
+           (each keeps an aria-label, so the name is still announced). */
+        @media (max-width: 400px) {
+            /* The panel has to fit between the HUD (ends at 9.3% of the canvas)
+               and the CRASHED! text (starts at 40%), so on small screens it
+               shrinks rather than moving out of that band. */
+            .share-panel { top: 11%; padding: 6px 7px 5px; width: 93%; }
+            .share-callout { font-size: 0.75em; letter-spacing: 0; line-height: 1.3; margin: 0 15px 6px; }
+            .share-actions { gap: 5px; }
+            .share-btn { font-size: 0.7em; letter-spacing: 0.5px; padding: 6px 7px; }
+            .share-btn svg { width: 15px; height: 15px; }
+            .share-btn.wa, .share-btn.xcom { padding: 6px 8px; }
+            .share-status { min-height: 0; margin-top: 5px; font-size: 0.7em; }
+            .share-dismiss { font-size: 0.85em; padding: 3px 5px; }
+        }
         span.fuel { color: #0f0; font-weight: bold; }
         span.enemy { color: #00f; font-weight: bold; }
 
@@ -151,10 +250,6 @@
             background: #555;
             border-color: #0f0;
         }
-        .touch-btn.accelerate {
-            flex: 1.4;
-            color: #0f0;
-        }
     </style>
 </head>
 <body>
@@ -162,18 +257,36 @@
     <h1>ROAD FIGHTER RETRO</h1>
 
     <div class="game-wrap">
-        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div class="canvas-wrap">
+            <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+            <div class="share-panel" id="sharePanel" hidden>
+                <button type="button" class="share-dismiss" id="shareDismiss" aria-label="Dismiss">&#10005;</button>
+                <p class="share-callout" id="shareCallout">NEW BEST!<br>Challenge a friend</p>
+                <div class="share-actions">
+                    <button type="button" class="share-btn primary" id="shareNative" hidden>SHARE</button>
+                    <a class="share-btn wa" id="shareWhatsapp" target="_blank" rel="noopener noreferrer" aria-label="Share on WhatsApp" title="Share on WhatsApp">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>
+                    </a>
+                    <a class="share-btn xcom" id="shareX" target="_blank" rel="noopener noreferrer" aria-label="Share on X" title="Share on X">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+                    </a>
+                    <button type="button" class="share-btn" id="shareCopy">COPY LINK</button>
+                </div>
+                <p class="share-status" id="shareStatus" role="status" aria-live="polite"></p>
+            </div>
+        </div>
 
         <div class="touch-controls">
             <button type="button" class="touch-btn" id="btnLeft" aria-label="Steer left">&#9664;</button>
-            <button type="button" class="touch-btn accelerate" id="btnUp" aria-label="Accelerate, or start the game">&#9650; GO</button>
             <button type="button" class="touch-btn" id="btnRight" aria-label="Steer right">&#9654;</button>
         </div>
     </div>
 
     <div class="instructions">
         <p><strong>Controls:</strong> Up Arrow to Accelerate. Left/Right Arrows to steer.<br>
-           On a touchscreen, use the buttons above.</p>
+           On a touchscreen, tap the game to start &mdash; the car accelerates by
+           itself, so you only steer.</p>
         <p>Dodge the <span class="enemy">Blue Cars</span>. Collect <span class="fuel">Green Cars</span> for fuel. Don't hit the sides!</p>
     </div>
 
@@ -186,7 +299,7 @@
 
         <h2>How to play</h2>
         <ol>
-            <li>Press the <strong>Up Arrow</strong> (or the <strong>GO</strong> button on touchscreens) to start the engine and accelerate.</li>
+            <li>Press the <strong>Up Arrow</strong> to start the engine and accelerate. On a touchscreen, tap the game to start &mdash; the car then accelerates automatically.</li>
             <li>Steer with the <strong>Left</strong> and <strong>Right Arrow</strong> keys, or the on-screen arrows.</li>
             <li>Weave past the blue traffic cars. A collision ends your run.</li>
             <li>Drive through green fuel cars to top up the tank before it empties.</li>
@@ -225,6 +338,14 @@
     let maxSpeed = 15;
     let lineOffset = 0;
     let frames = 0;
+
+    // Touch devices have no accelerate button: the car throttles up on its own
+    // along a logistic (sigmoid) curve, so the player only has to steer.
+    // S(t) = 1 / (1 + e^(-k(t - t0))) — a gentle launch, a quick middle ramp,
+    // then a smooth flattening as it approaches maxSpeed.
+    const AUTO_RAMP_K = 0.045;   // steepness
+    const AUTO_RAMP_MID = 90;    // frames to the halfway point (~1.5s at 60fps)
+    let autoRamp = 0;            // frames of uninterrupted throttle
 
     // Entities
     const player = { x: 185, y: 500, width: 30, height: 50, color: 'red', fuel: 100 };
@@ -321,6 +442,7 @@
     // Input Tracking
     const keys = { ArrowUp: false, ArrowLeft: false, ArrowRight: false };
     const isTouch = window.matchMedia('(pointer: coarse)').matches;
+    const autoAccelerate = isTouch; // no GO button on touch, so the throttle is automatic
 
     function startIfIdle() {
         if (gameState === 'PLAYING') return;
@@ -364,7 +486,14 @@
 
     bindHoldButton(document.getElementById('btnLeft'), 'ArrowLeft');
     bindHoldButton(document.getElementById('btnRight'), 'ArrowRight');
-    bindHoldButton(document.getElementById('btnUp'), 'ArrowUp', startIfIdle);
+
+    // The GO button used to be how touch players started a run, so the canvas
+    // itself takes over that job. Idle-only, so a tap mid-race does nothing.
+    canvas.addEventListener('pointerdown', (e) => {
+        if (gameState === 'PLAYING') return;
+        e.preventDefault();
+        startIfIdle();
+    });
 
     // Backgrounding the tab mid-press never delivers pointerup/keyup, which would
     // leave the car steering by itself on return.
@@ -383,9 +512,11 @@
     function resetGame() {
         for (const k in keys) keys[k] = false;
         beatHighScore = false;
+        closeSharePanel();
         player.x = 185;
         player.fuel = 100;
         speed = 0;
+        autoRamp = 0;
         score = 0;
         frames = 0;
         obstacles = [];
@@ -418,7 +549,12 @@
 
         frames++;
 
-        if (keys.ArrowUp) {
+        if (autoAccelerate) {
+            autoRamp++;
+            const throttle = 1 / (1 + Math.exp(-AUTO_RAMP_K * (autoRamp - AUTO_RAMP_MID)));
+            speed = maxSpeed * throttle;
+            player.fuel -= 0.05 * throttle; // burn scales with throttle, as it does on keys
+        } else if (keys.ArrowUp) {
             speed += 0.2;
             player.fuel -= 0.05;
         } else {
@@ -438,7 +574,8 @@
         // Wall collisions
         if (player.x < 20 || player.x + player.width > canvas.width - 20) {
             if (speed > 2) playSound('bump'); // Play small bump sound
-            speed = 0; 
+            speed = 0;
+            autoRamp = 0; // otherwise the sigmoid would restore speed instantly
             player.fuel -= 1; 
             if (player.x < 20) player.x = 20;
             if (player.x + player.width > canvas.width - 20) player.x = canvas.width - 20 - player.width;
@@ -546,7 +683,7 @@
             ctx.font = '30px Courier New';
             ctx.fillText('ROAD FIGHTER', canvas.width/2, canvas.height/2 - 20);
             ctx.font = '16px Courier New';
-            ctx.fillText(isTouch ? 'Tap GO to Start' : 'Press UP ARROW to Start', canvas.width/2, canvas.height/2 + 20);
+            ctx.fillText(isTouch ? 'Tap to Start' : 'Press UP ARROW to Start', canvas.width/2, canvas.height/2 + 20);
             ctx.textAlign = 'left';
         } else if (gameState === 'GAMEOVER') {
             ctx.fillStyle = 'rgba(0,0,0,0.7)';
@@ -569,7 +706,7 @@
             }
 
             ctx.fillStyle = 'white';
-            ctx.fillText(isTouch ? 'Tap GO to Restart' : 'Press UP ARROW to Restart',
+            ctx.fillText(isTouch ? 'Tap to Restart' : 'Press UP ARROW to Restart',
                 canvas.width/2, canvas.height/2 + 85);
             ctx.textAlign = 'left'; 
         }
@@ -609,7 +746,109 @@
             highScore = value;
             saveHighScore(highScore);
         }
+        lastScore = value;
+        maybePromptShare(value, beatHighScore);
     }
+
+    // --- SHARING --------------------------------------------------------
+    // The panel is inline, never a modal: it must never swallow the restart
+    // key or cover the canvas, so a player can crash-retry straight through it.
+    const MIN_SHARE_SCORE = 300; // below this, a "challenge your friends" prompt is just noise
+    let lastScore = 0;
+
+    const sharePanelEl = document.getElementById('sharePanel');
+    const shareCalloutEl = document.getElementById('shareCallout');
+    const shareNativeEl = document.getElementById('shareNative');
+    const shareWhatsappEl = document.getElementById('shareWhatsapp');
+    const shareXEl = document.getElementById('shareX');
+    const shareCopyEl = document.getElementById('shareCopy');
+    const shareStatusEl = document.getElementById('shareStatus');
+    const shareDismissEl = document.getElementById('shareDismiss');
+
+    // Always share the canonical production URL, never localhost or a preview host.
+    const canonicalEl = document.querySelector('link[rel="canonical"]');
+    const SHARE_URL = canonicalEl ? canonicalEl.href : window.location.href;
+
+    function shareMessage(value) {
+        return value > 0
+            ? `I scored ${value} in Road Fighter Retro \u{1F3CE}\u{FE0F} Can you beat it?`
+            : `Road Fighter Retro \u{1F3CE}\u{FE0F} a free retro arcade racer in your browser.`;
+    }
+
+    function trackShare(method) {
+        if (typeof gtag === 'function') {
+            gtag('event', 'share', { method: method, score: lastScore });
+        }
+    }
+
+    function refreshShareLinks() {
+        const text = shareMessage(lastScore);
+        shareWhatsappEl.href = 'https://wa.me/?text=' + encodeURIComponent(text + ' ' + SHARE_URL);
+        shareXEl.href = 'https://twitter.com/intent/tweet?text=' +
+            encodeURIComponent(text) + '&url=' + encodeURIComponent(SHARE_URL);
+    }
+
+    function openSharePanel() {
+        refreshShareLinks();
+        shareStatusEl.textContent = '';
+        sharePanelEl.hidden = false;
+    }
+
+    function closeSharePanel() {
+        sharePanelEl.hidden = true;
+    }
+
+    // Called on every crash. Shows on every new personal best above the floor,
+    // so beating your own record always gets the moment.
+    function maybePromptShare(value, isRecord) {
+        if (!isRecord) return;
+        if (value < MIN_SHARE_SCORE) return;
+        openSharePanel();
+    }
+
+    shareDismissEl.addEventListener('click', closeSharePanel);
+
+    // Native sheet is the best experience on mobile, but only exists on some browsers.
+    if (navigator.share) {
+        shareNativeEl.hidden = false;
+        shareNativeEl.addEventListener('click', async () => {
+            try {
+                await navigator.share({
+                    title: 'Road Fighter Retro',
+                    text: shareMessage(lastScore),
+                    url: SHARE_URL
+                });
+                trackShare('native');
+            } catch (err) {
+                /* the user dismissed the sheet — nothing to report */
+            }
+        });
+    }
+
+    shareWhatsappEl.addEventListener('click', () => trackShare('whatsapp'));
+    shareXEl.addEventListener('click', () => trackShare('x'));
+
+    shareCopyEl.addEventListener('click', async () => {
+        const payload = shareMessage(lastScore) + ' ' + SHARE_URL;
+        try {
+            await navigator.clipboard.writeText(payload);
+            shareStatusEl.textContent = 'Link copied!';
+        } catch (err) {
+            // clipboard API needs a secure context and permission; fall back
+            const ta = document.createElement('textarea');
+            ta.value = payload;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            let copied = false;
+            try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+            document.body.removeChild(ta);
+            shareStatusEl.textContent = copied ? 'Link copied!' : 'Copy failed \u2014 select the link manually.';
+        }
+        trackShare('copy');
+    });
 
     function gameLoop() {
         update();
