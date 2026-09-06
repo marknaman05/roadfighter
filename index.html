@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Road Fighter - Audio Edition</title>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7935638767228832"
+     crossorigin="anonymous"></script>
+    <style>
+        body {
+            background-color: #222;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+        .game-wrap {
+            width: 100%;
+            max-width: 400px;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            background-color: #555;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            border: 4px solid #eee;
+            touch-action: none; /* the canvas itself takes no gestures, but this stops the
+                                    page from panning/zooming under a stray touch near it */
+        }
+        .instructions {
+            margin-top: 15px;
+            text-align: center;
+            max-width: 400px;
+        }
+        span.fuel { color: #0f0; font-weight: bold; }
+        span.enemy { color: #00f; font-weight: bold; }
+
+        /* On-screen controls — shown for touch input, hidden when a mouse/
+           trackpad is the primary pointer so desktop stays keyboard-only. */
+        .touch-controls {
+            display: none;
+            width: 100%;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-top: 12px;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        @media (pointer: coarse) {
+            .touch-controls { display: flex; }
+        }
+        .touch-btn {
+            flex: 1;
+            min-height: 64px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 22px;
+            font-weight: bold;
+            color: #eee;
+            background: #333;
+            border: 3px solid #eee;
+            border-radius: 10px;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .touch-btn:active,
+        .touch-btn.is-pressed {
+            background: #555;
+            border-color: #0f0;
+        }
+        .touch-btn.accelerate {
+            flex: 1.4;
+            color: #0f0;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>ROAD FIGHTER RETRO</h2>
+
+    <div class="game-wrap">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+        <div class="touch-controls">
+            <button type="button" class="touch-btn" id="btnLeft" aria-label="Steer left">&#9664;</button>
+            <button type="button" class="touch-btn accelerate" id="btnUp" aria-label="Accelerate, or start the game">&#9650; GO</button>
+            <button type="button" class="touch-btn" id="btnRight" aria-label="Steer right">&#9654;</button>
+        </div>
+    </div>
+
+    <div class="instructions">
+        <p><strong>Controls:</strong> Up Arrow to Accelerate. Left/Right Arrows to steer.<br>
+           On a touchscreen, use the buttons above.</p>
+        <p>Dodge the <span class="enemy">Blue Cars</span>. Collect <span class="fuel">Green Cars</span> for fuel. Don't hit the sides!</p>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Game Variables
+    let gameState = 'START'; // START, PLAYING, GAMEOVER
+    let score = 0;
+    let speed = 0;
+    let maxSpeed = 15;
+    let lineOffset = 0;
+    let frames = 0;
+
+    // Entities
+    const player = { x: 185, y: 500, width: 30, height: 50, color: 'red', fuel: 100 };
+    let obstacles = [];
+    let fuels = [];
+
+    // Audio Variables
+    let audioCtx;
+    let engineOsc;
+    let engineGain;
+
+    // --- AUDIO SYSTEM ---
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Continuous Engine Sound
+            engineOsc = audioCtx.createOscillator();
+            engineGain = audioCtx.createGain();
+            engineOsc.type = 'sawtooth';
+            engineOsc.frequency.value = 50; 
+            engineGain.gain.value = 0; // Start muted until playing
+            
+            engineOsc.connect(engineGain);
+            engineGain.connect(audioCtx.destination);
+            engineOsc.start();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+
+        if (type === 'fuel') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (type === 'crash') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(20, now + 0.6);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            osc.start(now);
+            osc.stop(now + 0.6);
+        } else if (type === 'bump') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(100, now);
+            osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (type === 'start') {
+            // Classic 3-note ascending start arpeggio
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(440, now);          // A
+            osc.frequency.setValueAtTime(554.37, now + 0.1); // C#
+            osc.frequency.setValueAtTime(659.25, now + 0.2); // E
+            
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+            gain.gain.setValueAtTime(0.15, now + 0.25);
+            gain.gain.linearRampToValueAtTime(0, now + 0.3);
+            
+            osc.start(now);
+            osc.stop(now + 0.3);
+        }
+    }
+
+    function updateEngineSound() {
+        if (engineOsc && audioCtx && gameState === 'PLAYING') {
+            // Pitch shifts up as speed increases
+            const targetFreq = 50 + (speed * 6);
+            engineOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
+            engineGain.gain.setTargetAtTime(0.08, audioCtx.currentTime, 0.1);
+        } else if (engineGain) {
+            engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+        }
+    }
+    // --------------------
+
+    // Input Tracking
+    const keys = { ArrowUp: false, ArrowLeft: false, ArrowRight: false };
+    const isTouch = window.matchMedia('(pointer: coarse)').matches;
+
+    function startIfIdle() {
+        if (gameState === 'PLAYING') return;
+        initAudio(); // Boot up the audio context on first user interaction
+        playSound('start'); // Play the new race start sound!
+        resetGame();
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if(keys.hasOwnProperty(e.code)) keys[e.code] = true;
+        // Start/Restart game
+        if(e.code === 'ArrowUp' || e.code === 'Space') startIfIdle();
+    });
+    window.addEventListener('keyup', (e) => {
+        if(keys.hasOwnProperty(e.code)) keys[e.code] = false;
+    });
+
+    // --- TOUCH CONTROLS ---
+    // The buttons set the same `keys` flags the keyboard does, so update() needs
+    // no knowledge of where input came from.
+    function bindHoldButton(el, keyName, onPress) {
+        const press = (e) => {
+            e.preventDefault(); // suppress synthetic mouse events, scrolling and double-tap zoom
+            // capture keeps the matching pointerup on this element even if the
+            // finger slides off it mid-press, which would otherwise stick the key on
+            if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
+            keys[keyName] = true;
+            el.classList.add('is-pressed');
+            if (onPress) onPress();
+        };
+        const release = (e) => {
+            e.preventDefault();
+            keys[keyName] = false;
+            el.classList.remove('is-pressed');
+        };
+        el.addEventListener('pointerdown', press);
+        el.addEventListener('pointerup', release);
+        el.addEventListener('pointercancel', release);
+        el.addEventListener('contextmenu', (e) => e.preventDefault()); // long-press callout
+    }
+
+    bindHoldButton(document.getElementById('btnLeft'), 'ArrowLeft');
+    bindHoldButton(document.getElementById('btnRight'), 'ArrowRight');
+    bindHoldButton(document.getElementById('btnUp'), 'ArrowUp', startIfIdle);
+
+    // Backgrounding the tab mid-press never delivers pointerup/keyup, which would
+    // leave the car steering by itself on return.
+    window.addEventListener('blur', () => {
+        for (const k in keys) keys[k] = false;
+        document.querySelectorAll('.touch-btn').forEach(b => b.classList.remove('is-pressed'));
+    });
+
+    function triggerGameOver() {
+        gameState = 'GAMEOVER';
+        playSound('crash');
+        updateEngineSound(); // Mutes the engine
+    }
+
+    function resetGame() {
+        player.x = 185;
+        player.fuel = 100;
+        speed = 0;
+        score = 0;
+        frames = 0;
+        obstacles = [];
+        fuels = [];
+        gameState = 'PLAYING';
+    }
+
+    function spawnEntities() {
+        if (frames % Math.floor(Math.random() * 30 + 30) === 0 && speed > 2) {
+            let laneX = Math.random() * (canvas.width - 80) + 40;
+            obstacles.push({ x: laneX, y: -50, width: 30, height: 50, speed: Math.random() * 3 + 2 });
+        }
+        if (frames % 200 === 0 && speed > 2) {
+            let laneX = Math.random() * (canvas.width - 80) + 40;
+            fuels.push({ x: laneX, y: -50, width: 20, height: 20 });
+        }
+    }
+
+    function checkCollision(rect1, rect2) {
+        return (
+            rect1.x < rect2.x + rect2.width &&
+            rect1.x + rect1.width > rect2.x &&
+            rect1.y < rect2.y + rect2.height &&
+            rect1.y + rect1.height > rect2.y
+        );
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+
+        frames++;
+
+        if (keys.ArrowUp) {
+            speed += 0.2;
+            player.fuel -= 0.05;
+        } else {
+            speed -= 0.1;
+        }
+        
+        player.fuel -= 0.02;
+
+        if (speed > maxSpeed) speed = maxSpeed;
+        if (speed < 0) speed = 0;
+
+        score += Math.floor(speed / 2);
+
+        if (keys.ArrowLeft) player.x -= 4 + (speed * 0.1);
+        if (keys.ArrowRight) player.x += 4 + (speed * 0.1);
+
+        // Wall collisions
+        if (player.x < 20 || player.x + player.width > canvas.width - 20) {
+            if (speed > 2) playSound('bump'); // Play small bump sound
+            speed = 0; 
+            player.fuel -= 1; 
+            if (player.x < 20) player.x = 20;
+            if (player.x + player.width > canvas.width - 20) player.x = canvas.width - 20 - player.width;
+        }
+
+        spawnEntities();
+
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            let obs = obstacles[i];
+            obs.y += speed - obs.speed; 
+            
+            if (obs.y > canvas.height) {
+                obstacles.splice(i, 1);
+            } else if (checkCollision(player, obs)) {
+                triggerGameOver();
+            }
+        }
+
+        for (let i = fuels.length - 1; i >= 0; i--) {
+            let f = fuels[i];
+            f.y += speed; 
+            
+            if (f.y > canvas.height) {
+                fuels.splice(i, 1);
+            } else if (checkCollision(player, f)) {
+                player.fuel = Math.min(100, player.fuel + 20);
+                playSound('fuel');
+                fuels.splice(i, 1);
+            }
+        }
+
+        if (player.fuel <= 0) {
+            triggerGameOver();
+        }
+
+        lineOffset += speed;
+        if (lineOffset > 40) lineOffset = 0;
+
+        updateEngineSound();
+    }
+
+    function drawCar(x, y, width, height, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, width, height);
+        ctx.fillStyle = '#add8e6';
+        ctx.fillRect(x + 5, y + 10, width - 10, 10);
+        ctx.fillRect(x + 5, y + height - 15, width - 10, 10);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#555';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#eee'; 
+        for(let i = -40; i < canvas.height; i += 40) {
+            ctx.fillStyle = (i + lineOffset) % 80 < 40 ? 'red' : 'white';
+            ctx.fillRect(0, i + lineOffset, 20, 40);
+            ctx.fillRect(canvas.width - 20, i + lineOffset, 20, 40);
+        }
+
+        ctx.fillStyle = 'white';
+        for (let i = -40; i < canvas.height; i += 40) {
+            if ((i + lineOffset) % 80 < 40) {
+                ctx.fillRect(canvas.width / 2 - 5, i + lineOffset, 10, 40);
+            }
+        }
+
+        obstacles.forEach(obs => drawCar(obs.x, obs.y, obs.width, obs.height, 'blue'));
+
+        fuels.forEach(f => {
+            ctx.fillStyle = '#0f0';
+            ctx.beginPath();
+            ctx.arc(f.x + f.width/2, f.y + f.height/2, f.width/2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '10px Arial';
+            ctx.fillText('F', f.x + 5, f.y + 14);
+        });
+
+        if (gameState !== 'GAMEOVER' || frames % 20 < 10) { 
+            drawCar(player.x, player.y, player.width, player.height, player.color);
+        }
+
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Courier New';
+        ctx.fillText(`SCORE: ${score}`, 30, 30);
+        
+        ctx.fillText(`FUEL:`, 230, 30);
+        ctx.fillStyle = player.fuel > 20 ? 'green' : 'red';
+        ctx.fillRect(290, 15, player.fuel, 15);
+        ctx.strokeStyle = 'white';
+        ctx.strokeRect(290, 15, 100, 15);
+
+        if (gameState === 'START') {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.font = '30px Courier New';
+            ctx.fillText('ROAD FIGHTER', canvas.width/2, canvas.height/2 - 20);
+            ctx.font = '16px Courier New';
+            ctx.fillText(isTouch ? 'Tap GO to Start' : 'Press UP ARROW to Start', canvas.width/2, canvas.height/2 + 20);
+            ctx.textAlign = 'left';
+        } else if (gameState === 'GAMEOVER') {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'red';
+            ctx.textAlign = 'center';
+            ctx.font = '40px Courier New';
+            ctx.fillText('CRASHED!', canvas.width/2, canvas.height/2 - 20);
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Courier New';
+            ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 + 20);
+            ctx.font = '16px Courier New';
+            ctx.fillText(isTouch ? 'Tap GO to Restart' : 'Press UP ARROW to Restart', canvas.width/2, canvas.height/2 + 60);
+            ctx.textAlign = 'left'; 
+        }
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+</script>
+
+</body>
+</html>
