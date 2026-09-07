@@ -113,6 +113,21 @@
         .page-copy h3 + p { margin-top: 0; }
         .page-copy ol { padding-left: 1.3em; }
         .page-copy li { margin-bottom: 0.4em; }
+        .share-bar { text-align: center; margin-top: 12px; }
+        .share-toggle {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85em;
+            font-weight: bold;
+            letter-spacing: 1px;
+            background: transparent;
+            color: #888;
+            border: 2px solid #555;
+            padding: 7px 14px;
+            cursor: pointer;
+        }
+        .share-toggle:hover { color: #ff0; border-color: #ff0; }
+        .share-toggle[aria-expanded="true"] { color: #ff0; border-color: #ff0; }
+
         /* --- Share panel: overlays the canvas, sitting above the CRASHED! text --- */
         .canvas-wrap {
             position: relative;
@@ -275,6 +290,11 @@
                 </div>
                 <p class="share-status" id="shareStatus" role="status" aria-live="polite"></p>
             </div>
+        </div>
+
+        <div class="share-bar">
+            <button type="button" class="share-toggle" id="shareToggle"
+                    aria-expanded="false" aria-controls="sharePanel">SHARE HI-SCORE</button>
         </div>
 
         <div class="touch-controls">
@@ -794,6 +814,7 @@
     const MIN_SHARE_SCORE = 300; // below this, a "challenge your friends" prompt is just noise
     let lastScore = 0;
 
+    const shareToggleEl = document.getElementById('shareToggle');
     const sharePanelEl = document.getElementById('sharePanel');
     const shareCalloutEl = document.getElementById('shareCallout');
     const shareNativeEl = document.getElementById('shareNative');
@@ -826,14 +847,29 @@
             encodeURIComponent(text) + '&url=' + encodeURIComponent(SHARE_URL);
     }
 
-    function openSharePanel() {
+    // isRecord distinguishes the celebratory prompt after a new best from a
+    // manual open via the SHARE HI-SCORE button.
+    function openSharePanel(isRecord) {
+        if (!isRecord) {
+            // Manual open: there is no just-finished run to share, so pitch the
+            // best score instead (falling back to a generic message at zero).
+            lastScore = highScore;
+        }
+        shareCalloutEl.innerHTML = isRecord
+            ? 'NEW BEST!<br>Challenge a friend'
+            : (highScore > 0
+                ? 'HI-SCORE ' + highScore + '<br>Challenge a friend'
+                : 'Challenge a friend<br>to a race');
+        sharePanelEl.classList.toggle('is-record', !!isRecord);
         refreshShareLinks();
         shareStatusEl.textContent = '';
         sharePanelEl.hidden = false;
+        shareToggleEl.setAttribute('aria-expanded', 'true');
     }
 
     function closeSharePanel() {
         sharePanelEl.hidden = true;
+        shareToggleEl.setAttribute('aria-expanded', 'false');
     }
 
     // Called on every crash. Shows on every new personal best above the floor,
@@ -841,10 +877,15 @@
     function maybePromptShare(value, isRecord) {
         if (!isRecord) return;
         if (value < MIN_SHARE_SCORE) return;
-        openSharePanel();
+        openSharePanel(true);
     }
 
     shareDismissEl.addEventListener('click', closeSharePanel);
+
+    shareToggleEl.addEventListener('click', () => {
+        if (sharePanelEl.hidden) openSharePanel(false);
+        else closeSharePanel();
+    });
 
     // Native sheet is the best experience on mobile, but only exists on some browsers.
     if (navigator.share) {
